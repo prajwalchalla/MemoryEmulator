@@ -1,0 +1,12 @@
+[submodule "python-louvain"]
+	path = python-louvain
+	url = https://github.com/taynaud/python-louvain.git
+[submodule "DirectedLouvain"]
+	path = DirectedLouvain
+	url = https://github.com/nicolasdugue/DirectedLouvain.git
+[submodule "miniVite"]
+	path = miniVite
+	url = https://github.com/ECP-ExaGraph/miniVite.git
+[submodule "rapidjson"]
+	path = rapidjson
+	url = https://github.com/Tencent/rapidjson.git

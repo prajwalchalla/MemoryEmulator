@@ -1,0 +1,188 @@
+#!/usr/bin/python
+import sys
+import subprocess
+import os
+
+def twos_comp(val, bits):
+  """compute the 2's complement of int value val"""
+  if (val & (1 << (bits - 1))) != 0: # if sign bit is set e.g., 8bit: 128-255
+    val = val - (1 << bits)        # compute negative value
+  return val                         # return positive value as is
+
+#it will get the trace and the binary to add base off set for the IP addreses.
+#arg input file , binary, lc file,  output file
+def main():
+  if len(sys.argv) != 5:
+    print ("Run as following\n./memgaze-xtrace-normalize <input trace> <binary path> <binanlys file> <output trace>")
+
+  print (sys.argv[1])
+  print (sys.argv[2])
+  print (sys.argv[3])
+
+  inputTrace = open(sys.argv[1], "r")
+  inputBinAnlys = open(sys.argv[3], "r")
+
+  binaryPath = sys.argv[2]
+  outputTrace = open(sys.argv[4], "w")
+  callGraph = open(sys.argv[4]+"_callGraph",  "w")
+
+  offsetMap = {}
+  scaleMap = {}
+  load_class={}
+  # read <binanlys file>
+  while True:
+    line  = inputBinAnlys.readline()
+
+    if not line:
+      break
+
+    # print line
+    lineA =  line.split()
+
+    # See <memgaze>/README-notes.md
+    # <0:insn pointer> <1:load|store & load class> <2:offset?> <3:compression ratio> <4:symbol-id> <5:symbol-offset> <6:symbol-name>
+
+    ip = int(lineA[0], 16)
+    lc = int(lineA[1])
+    offset = twos_comp(int(lineA[2],16), 32)
+    scale = int(lineA[3], 16)
+
+    offsetMap[ip]=offset
+    scaleMap[ip]=scale
+    load_class[ip]=lc
+
+  # print offsetMap
+
+  command = "objdump -h {} | grep .dyninstInst".format(binaryPath)
+  dumpOut=subprocess.Popen(['objdump', '-h', binaryPath],stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+  stdout,stderr = dumpOut.communicate()
+  objdump = stdout.split()
+  index = objdump.index( b".dyninstInst")
+  baseAddr = int(objdump[index+2], 16)
+  print ("base addres is:{}".format(hex(baseAddr)))
+
+  add_offset = True
+  str_output = ""
+  prev_addr = 0
+  prev_cpu = ""
+  prev_time = ""
+  prev_ip = 0
+  windowID = ""
+  dso = {}
+  index = 0
+  while True:
+    line = inputTrace.readline()
+    if not line:
+      break
+    else:
+      if "CG-LBR" in line:
+        continue
+      else:
+        words =  line.split()
+        if words[5] in dso:
+          continue
+        else:
+          dso[words[5]] = index
+          index+=1
+
+  print(dso)
+  outputTrace.write("DSO: <name> <id>\n")
+  for key,val in dso.items():
+    dso_output =  "{} {}\n".format(key, val)
+    outputTrace.write(dso_output)
+  outputTrace.write("TRACE: <IP> <LoadClass/Store> <Addrs> <CPU> <time> <sampleID> <DSO_id>\n")
+  inputTrace.seek(0)
+  #lc_dict={}
+  while True:
+    line = inputTrace.readline()
+    if not line:
+      break
+    if "CG-LBR" in line:
+      callGraph.write(line)
+      continue
+    words =  line.split()
+    IP=int(words[0],16)
+
+    Addr=int(words[1],16)
+    CPU=words[2]
+    Time=words[3]
+    windowID = words[4]
+    in_dso = words[5]
+    IP=IP+baseAddr
+#    print "IP: {} prevIP: {}".format(IP,prev_ip)
+
+    if prev_ip+5 == IP:
+      scale = 1
+      if IP in scaleMap:
+        scale =  scaleMap[IP]
+      Addr = Addr + prev_addr*scale
+      IP = prev_ip
+      CPU = prev_cpu
+      Time = prev_time
+#      add_offset = False
+    else:
+      outputTrace.write(str_output)
+#      add_offset = True
+#    if add_offset:
+    if IP in offsetMap:
+      offset =  offsetMap[IP]
+#        print "I am addding offset {}".format(offset, 'x')
+    else :
+      offset = 0
+    Addr = Addr + offset
+    out_dso = -1
+
+    if in_dso in dso:
+      out_dso = dso[in_dso]
+    lc=50
+    inputBinAnlys.seek(0)
+
+    if IP in load_class:
+      lc=load_class[IP]
+
+    else:
+      lc=10
+    
+    '''  
+    else:
+      while True:
+        line12  = inputBinAnlys.readline()
+
+        if not line12:
+            break
+
+        # print line
+        lineA12 =  line12.split()
+
+        # See <memgaze>/README-notes.md
+        # <0:insn pointer> <1:load|store & load class> <2:offset?> <3:compression ratio> <4:symbol-id> <5:symbol-offset> <6:symbol-name>
+
+        ip = int(lineA12[0], 16)
+        lc=10
+        #print(ip, IP)
+        if ip==IP:
+            lc = int(lineA12[1])
+            lc_dict[IP]=lc
+            break
+        elif ip>(IP+800):
+          #No need to go though the whole file again. Break. Add to dictionary it is a bad address
+          lc_dict[IP]=lc
+          break
+        '''
+      #offset = twos_comp(int(lineA[2],16), 32)
+      #scale = int(lineA[3], 16)
+    str_output = "{} {} {} {} {} {} {}\n".format(hex(IP),lc,hex(Addr),CPU,Time,windowID,out_dso)
+#    outputTrace.write("{} {} {} {}\n".format(hex(IP),Addr,CPU,Time))
+
+    prev_ip = IP
+    prev_cpu = CPU
+    prev_time = Time
+    prev_addr = Addr
+
+  outputTrace.write(str_output)
+  outputTrace.close()
+  inputTrace.close()
+  callGraph.close()
+
+if __name__ == "__main__":
+  main()

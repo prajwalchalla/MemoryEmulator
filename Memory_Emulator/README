@@ -1,0 +1,22 @@
+`cluster-anlys` is a tool that constructs IP-transition graph (at basic block granularity) out of memory traces (output of MemGaze tool) and peforms Louvain clustering on that graph. 
+The intuition is here is that, each cluster domain represents a "hot sequence", i.e., repeating series of memory operations which can be used to represent memory-intensive code regions.
+
+MemGaze Pipeline:
+1. <MEMGAZE_PATH>/install/bin/memgaze-inst <app>
+2. <MEMGAZE_PATH>/install/bin/memgaze-run -p 100000 memgaze-<app>/<app>-memgaze
+3. <MEMGAZE_PATH>/install/bin/memgaze-xtrace -i <app>-memgaze-trace-b8192-p100000/
+
+Graph Cluster Analysis:
+1. Get the trace file 
+2. Generate basic-blocks.json file (scripts/ directory)
+3. Place tracefile and basic-blocks.json in a directory
+4. Run cluster analysis using `cluster-anlys` tool
+
+Graph Semantics:
+Node -> a basic block
+Edge -> a trasition from a basic block to another (observed in trace)
+Weight -> number of time that transition occured in trace
+
+Useful commands:
+- Mangling c++ function: https://stackoverflow.com/questions/12400105/getting-mangled-name-from-demangled-name
+  echo "int f1(char *, int) {} " | g++ -x c++ -S - -o- | grep "^_.*:$" | sed -e 's/:$//'
